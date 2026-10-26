@@ -10,6 +10,8 @@ for (const k of ['DISCORD_BOT_TOKEN', 'WEBHOOK_URL', 'WEBHOOK_KEY', 'OWNER_ID', 
 
 const OWNER = '100000000000000001';
 const BOT_ID = '999999999999999999';
+// File modes are not enforced on Windows; assert them only where the OS supports it.
+const modeIs600 = (file) => (process.platform === 'win32' ? true : (fs.statSync(file).mode & 0o777) === 0o600);
 const mkTmp = (p = 'gdb-test-') => fs.mkdtempSync(path.join(os.tmpdir(), p));
 const mkMap = (arr) => new Map(arr.map((x) => [x.id, x]));
 
@@ -58,4 +60,4 @@ function mkInteraction({ userId = OWNER, group = null, sub, opts = {} }) {
   return i;
 }
 
-module.exports = { OWNER, BOT_ID, mkTmp, mkMap, mockMsg, fakeWebhook, mkInteraction };
+module.exports = { modeIs600, OWNER, BOT_ID, mkTmp, mkMap, mockMsg, fakeWebhook, mkInteraction };

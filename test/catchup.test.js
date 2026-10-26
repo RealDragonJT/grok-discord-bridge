@@ -135,3 +135,50 @@ test('state: recent-id set stays bounded; fresh state has no lastAliveAt (bot.js
   assert.strictEqual(Object.keys(st.recent).length, 3);
   st.alive(NOW); assert.strictEqual(new cu.CatchupState(path.join(dir, 'c.json')).lastAliveAt, NOW);
 });
+
+test('a newer live message never moves the cursor past an older missed one (reconnect recovery)', async () => {
+  const r = rig();
+  const missed = mk(20 * 60e3, { id: sf(20 * 60e3), content: 'missed while down', mention: true, aid: FRIEND });
+  const live = mk(5 * 60e3, { id: sf(5 * 60e3), content: 'live after reconnect', mention: true, aid: FRIEND });
+  // the live message is processed first (as the gateway does after a reconnect)
+  await r.pipeline.process(live, { kind: 'mention', replyToBot: false, authorIsBot: false }, { botId: BOT_ID, now: NOW });
+  assert.strictEqual(r.cstate.lastIds['g1c'], undefined, 'live handling must not advance the catch-up cursor');
+  const res = await cu.catchUpChannel({
+    channelId: 'g1c', kind: 'guild', state: r.cstate, now: NOW, floorMs: NOW - 3600e3, botId: BOT_ID,
+    fetchPage: async ({ after }) => [missed, live].filter((m) => BigInt(m.id) > BigInt(after)),
+    process: (m, c, o) => r.pipeline.process(m, c, { ...o, botId: BOT_ID }),
+  });
+  assert.strictEqual(res.fed, 1, 'only the missed one is fed; the live one is a dup');
+  await sleep(150);
+  assert.deepStrictEqual(r.events.flatMap((e) => e.messages.map((m) => m.content)).sort(), ['live after reconnect', 'missed while down']);
+});
+
+test('failed webhook deliveries are kept (ids only) and re-fed by the next catch-up pass, then cleared', async () => {
+  const r = rig();
+  const m = mk(10 * 60e3, { id: sf(10 * 60e3), content: 'important', mention: true, aid: FRIEND });
+  const cls = { kind: 'mention', replyToBot: false, authorIsBot: false };
+  await r.pipeline.process(m, cls, { botId: BOT_ID, now: NOW });
+  await sleep(150);
+  assert.strictEqual(r.events.length, 1);
+  assert(r.cstate.hasSeen(m.id));
+  // the webhook then failed for that batch
+  r.cstate.noteUndelivered([{ channelId: 'g1c', id: m.id }]);
+  assert(!r.cstate.hasSeen(m.id)); assert(r.cstate.hasUndelivered());
+  const saved = JSON.stringify(JSON.parse(require('fs').readFileSync(r.file, 'utf8')));
+  assert(!saved.includes('important'), 'only ids are persisted, never message text');
+  // survives a restart
+  const st2 = new cu.CatchupState(r.file, { pauseMs: 0 });
+  assert.strictEqual(st2.undelivered['g1c'], m.id);
+  const events2 = [];
+  const pipe2 = new Pipeline({ getSettings: () => r.settings.get(), policy: r.policy, cstate: st2, state: r.state, batcher: new Batcher({ debounceMs: 30, maxWaitMs: 300, onFlush: (i) => events2.push(buildEvent(i)) }) });
+  st2.advance('g1c', m.id); // even if the cursor had moved past it
+  const res = await cu.catchUpChannel({
+    channelId: 'g1c', kind: 'guild', state: st2, now: NOW, floorMs: NOW - 3600e3, botId: BOT_ID,
+    fetchPage: async ({ after }) => [m].filter((x) => BigInt(x.id) > BigInt(after)),
+    process: (mm, c, o) => pipe2.process(mm, c, { ...o, botId: BOT_ID }),
+  });
+  assert.strictEqual(res.fed, 1);
+  await sleep(150);
+  assert.strictEqual(events2.length, 1); assert.strictEqual(events2[0].messages[0].content, 'important'); assert.strictEqual(events2[0].missed, true);
+  assert(!st2.hasUndelivered(), 'cleared once re-fed');
+});

@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { mkTmp } = require('./helpers');
+const { mkTmp, modeIs600 } = require('./helpers');
 const { HealthMonitor, statusName, EXIT_UNHEALTHY } = require('../lib/health');
 const pins = require('../lib/pins');
 const { RuntimeState } = require('../lib/state');
@@ -82,7 +82,7 @@ test('pinned status: newest pin by bot/owner only, sanitized, optional status li
 test('runtime state: persists counters, mode 600, no message text fields', () => {
   const dir = mkTmp(); const f = path.join(dir, 'state.json');
   const s = new RuntimeState(f); s.recordWake('mention', 1700000000000); s.countDrop('cooldown'); s.notePending('300000000000000001', 'rando', 1700000000000); s.dailyCount = 3; s.day = '2026-10-24'; s.touch(); s.flush();
-  assert.strictEqual(fs.statSync(f).mode & 0o777, 0o600);
+  assert(modeIs600(f), 'file mode 600');
   const s2 = new RuntimeState(f);
   assert.deepStrictEqual([s2.stats.wakes, s2.stats.dropped.cooldown, s2.dailyCount, s2.pending['300000000000000001'].count], [1, 1, 3, 1]);
   for (let i = 0; i < 40; i++) s2.notePending(String(300000000000000100 + i), 'u', 1700000000000 + i);

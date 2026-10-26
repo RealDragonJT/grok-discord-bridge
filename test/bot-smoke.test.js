@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { mkTmp, fakeWebhook, OWNER } = require('./helpers');
+const { mkTmp, fakeWebhook, OWNER, modeIs600 } = require('./helpers');
 
 test('bot.js end to end with a fake gateway: owner DM wakes the webhook, stranger is ignored, /bridge works for the owner only', async () => {
   const hook = await fakeWebhook(() => 200, 'smoke-key-123456');
@@ -30,7 +30,7 @@ test('bot.js end to end with a fake gateway: owner DM wakes the webhook, strange
   await hook.close();
 
   assert.notStrictEqual(ex, 'timeout', 'clean shutdown on SIGTERM');
-  assert.strictEqual(ex.code, 0, out);
+  if (process.platform !== 'win32') assert.strictEqual(ex.code, 0, out); // Windows has no SIGTERM: kill() terminates the child outright
   assert(/MOCK intents=4/.test(out), 'Guilds, GuildMessages, DirectMessages, MessageContent');
   assert(/clientReady: connected as MockBot#0000/.test(out), out);
   assert(/MOCK commands.set count=1 name=bridge/.test(out), 'slash command registered globally on ready');
@@ -47,7 +47,7 @@ test('bot.js end to end with a fake gateway: owner DM wakes the webhook, strange
   assert(!out.includes('ultra-secret-text-in-smoke-test') && !out.includes('hello from the owner'), 'message text never logged');
   assert(!out.includes('smoke-key-123456') && !out.includes('aaaaaaaaaaaaaaaaaaaaaaaa.bbbbbb'), 'secrets never logged');
   const dataDir = env.DATA_DIR;
-  assert.strictEqual(fs.statSync(path.join(dataDir, 'settings.json')).mode & 0o777, 0o600);
+  assert(modeIs600(path.join(dataDir, 'settings.json')), 'file mode 600');
   const health = JSON.parse(fs.readFileSync(path.join(dataDir, 'health.json'), 'utf8').toString() || '{}');
   assert.strictEqual(health.connected, true);
   const st = JSON.parse(fs.readFileSync(path.join(dataDir, 'state.json'), 'utf8'));
