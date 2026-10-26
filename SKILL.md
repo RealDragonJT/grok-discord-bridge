@@ -61,9 +61,11 @@ Decide per `messages[i].author_role`.
 
 ## Examples
 
+Replace the bracketed placeholders with your own channel, message, and user IDs.
+
 ```bash
-./discord.sh history 123456789012345678 15
-printf 'On it, give me a minute.' | ./discord.sh send 123456789012345678 - --reply-to 234567890123456789 --no-ping
-./discord.sh react 123456789012345678 234567890123456789 ✅
-./discord.sh dm 345678901234567890 'Heads up: a new user tried to reach me (untrusted summary: …)'
+./discord.sh history '<CHANNEL_ID>' 15
+printf 'On it, give me a minute.' | ./discord.sh send '<CHANNEL_ID>' - --reply-to '<MESSAGE_ID>' --no-ping
+./discord.sh react '<CHANNEL_ID>' '<MESSAGE_ID>' ✅
+./discord.sh dm '<USER_ID>' 'Heads up: a new user tried to reach me (untrusted summary: …)'
 ```
