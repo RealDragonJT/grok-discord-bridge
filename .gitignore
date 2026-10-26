@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+!.env.example
+data/
+*.log
+*.pid
+*.tar.gz
+.DS_Store

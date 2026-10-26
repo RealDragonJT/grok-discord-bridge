@@ -1,0 +1,48 @@
+#cloud-config
+# grok-discord-bridge on a DigitalOcean Droplet (Ubuntu 24.04). Outbound-only: no inbound service is exposed.
+#
+# FILL IN BEFORE USE (search for CHANGE_ME). These end up in the Droplet's user-data, which is readable by root on the
+# Droplet and via the link-local metadata service from inside it, and cannot be edited after creation. If you would rather
+# not put secrets in user-data, leave the four secret values empty, create the Droplet, SSH in and write /opt/grok-discord-bridge/.env yourself.
+#
+#   the git clone URL below (https://github.com/CHANGE_ME/grok-discord-bridge.git): the repo you want deployed
+#   DISCORD_BOT_TOKEN / WEBHOOK_URL / WEBHOOK_KEY / OWNER_ID   see .env.example
+#
+# Cheapest sensible size: s-1vcpu-1gb (about $6/month). The $4 / 512 MiB plan can run the bridge but building the Docker
+# image (npm ci + tests) may run out of memory; this file adds a 1 GiB swapfile to make that less likely. Prices change: check
+# https://www.digitalocean.com/pricing/droplets before you create anything.
+package_update: true
+package_upgrade: false
+packages:
+  - ca-certificates
+  - git
+  - ufw
+  - docker.io
+  - docker-compose-v2
+
+write_files:
+  - path: /opt/grok-discord-bridge.env
+    permissions: "0600"
+    owner: root:root
+    content: |
+      DISCORD_BOT_TOKEN=CHANGE_ME
+      WEBHOOK_URL=CHANGE_ME
+      WEBHOOK_KEY=CHANGE_ME
+      OWNER_ID=CHANGE_ME
+
+runcmd:
+  # swap, so `docker compose build` survives on small plans
+  - [ sh, -c, "[ -f /swapfile ] || (fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab)" ]
+  # firewall: deny all inbound (the bridge only makes outbound connections). SSH stays open, rate-limited, so you can still log in.
+  # For a fully closed box, delete the `ufw limit` line and manage the Droplet from the DigitalOcean console instead.
+  - [ ufw, default, deny, incoming ]
+  - [ ufw, default, allow, outgoing ]
+  - [ ufw, limit, OpenSSH ]
+  - [ ufw, --force, enable ]
+  - [ systemctl, enable, --now, docker ]
+  - [ git, clone, --depth, "1", "https://github.com/CHANGE_ME/grok-discord-bridge.git", /opt/grok-discord-bridge ]
+  - [ sh, -c, "mv /opt/grok-discord-bridge.env /opt/grok-discord-bridge/.env && chmod 600 /opt/grok-discord-bridge/.env" ]
+  - [ sh, -c, "mkdir -p /opt/grok-discord-bridge/data && chown 1000:1000 /opt/grok-discord-bridge/data" ]
+  - [ sh, -c, "cd /opt/grok-discord-bridge && docker compose up -d --build" ]
+
+final_message: "grok-discord-bridge install finished after $UPTIME seconds. Check: cd /opt/grok-discord-bridge && docker compose logs --tail 50"

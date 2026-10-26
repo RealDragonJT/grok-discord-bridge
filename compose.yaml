@@ -1,0 +1,22 @@
+services:
+  bridge:
+    build: .
+    image: grok-discord-bridge:latest
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    volumes:
+      # settings.json (managed by /bridge slash commands), dedupe/catch-up state, health file.
+      # The container runs as uid 1000: `mkdir -p data && chown 1000:1000 data` before the first start.
+      - ./data:/app/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Time to flush pending webhook posts and save state on shutdown.
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

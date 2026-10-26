@@ -1,0 +1,51 @@
+# DigitalOcean App Platform spec for grok-discord-bridge (a WORKER: no HTTP port, outbound connections only).
+#
+# BEFORE YOU USE IT
+#   1. Replace YOUR-GITHUB-USER/grok-discord-bridge with the repo App Platform should build (it must be reachable by
+#      DigitalOcean: a public repo, or a private one you connected to your DigitalOcean account).
+#   2. Create it:   doctl apps create --spec .do/app.yaml      (or paste this into the App Platform "Edit spec" dialog)
+#   3. Fill the four SECRET values in the console (Settings > the worker > Environment Variables), or pass them
+#      through your tooling. Never commit real values into this file.
+#
+# TRADEOFFS (read docs/DIGITALOCEAN.md): App Platform containers have an ephemeral disk. data/settings.json (changes made
+# with /bridge slash commands) and dedupe/catch-up state are LOST on every redeploy or container restart.
+#   - settings: set SETTINGS_B64 (base64 of the output of /bridge export) to re-seed them after a redeploy.
+#   - state: a fresh container skips catch-up replay (no duplicates, but messages that arrived while the worker was down are not replayed).
+# If you want settings and catch-up to persist, use the Droplet route (deploy/digitalocean/cloud-init.yaml) instead.
+#
+# Smallest worker size (apps-s-1vcpu-0.5gb) is listed at about $5/month on DigitalOcean's pricing page (checked 2026-10; confirm before you commit).
+name: grok-discord-bridge
+region: nyc
+workers:
+  - name: bridge
+    github:
+      repo: YOUR-GITHUB-USER/grok-discord-bridge
+      branch: main
+      deploy_on_push: false
+    dockerfile_path: Dockerfile
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    envs:
+      # type SECRET: the console/API encrypts the value on first submission. Leave empty here.
+      - key: DISCORD_BOT_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+        value: ""
+      - key: WEBHOOK_URL
+        scope: RUN_TIME
+        type: SECRET
+        value: ""
+      - key: WEBHOOK_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: ""
+      - key: OWNER_ID
+        scope: RUN_TIME
+        type: SECRET
+        value: ""
+      # Optional: base64 of an exported settings.json, used only when no settings file exists yet (every fresh container here).
+      # Create it with:  base64 -w0 settings.json     (empty = start from defaults)
+      - key: SETTINGS_B64
+        scope: RUN_TIME
+        type: SECRET
+        value: ""

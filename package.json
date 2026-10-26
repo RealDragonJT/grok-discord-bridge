@@ -1,0 +1,23 @@
+{
+  "name": "grok-discord-bridge",
+  "version": "1.0.0",
+  "description": "Wake your Grok Bot agent on Discord DMs and @mentions: a small discord.js listener that POSTs to your own routine webhook.",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "test": "node --test test/*.test.js",
+    "check": "node scripts/syntax-check.js",
+    "doctor": "node doctor.js",
+    "discord": "node discord-cli.js"
+  },
+  "keywords": ["discord", "discord.js", "webhook", "grok", "agent", "bridge"],
+  "license": "MIT",
+  "type": "commonjs",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  }
+}

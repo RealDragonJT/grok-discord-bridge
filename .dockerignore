@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+node_modules
+data
+docs
+deploy
+.do
+*.log
+*.pid
+*.tar.gz
+*.md
