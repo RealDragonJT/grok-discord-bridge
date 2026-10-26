@@ -10,6 +10,7 @@ Two situations bring an AI agent to this repo:
    * `lib/policy.js` decides who may wake the agent. Keep roles resolved by user id, keep the owner exempt from quotas, keep strangers/bots ignored by default.
    * Never log message text (ids and lengths only) and never print secrets. Add a test when you add a log line near message handling.
    * No self-updater, no inbound ports, no telemetry, no real tokens or personal identifiers in the repo, tests or docs.
+   * Public documentation must use explicit placeholders for Discord user, bot, server, channel, and message identities. Do not include personal display names, usernames, bot names, invite links, message links, or numeric example IDs. Product names, API field names, and permission bitmasks are fine.
    * The agent-facing prompt and skill ([`ROUTINE-PROMPT.md`](ROUTINE-PROMPT.md), [`SKILL.md`](SKILL.md)) must stay in sync with the payload built in `lib/payload.js`.
 
 Using the bridge once it runs (replying on Discord from a routine): see [`SKILL.md`](SKILL.md).
