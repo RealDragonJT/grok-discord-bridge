@@ -28,7 +28,8 @@ No self-updater, no inbound ports, no telemetry.
 ## Quick start
 
 **With an agent (recommended):** give it the repo link and say *"set up grok-discord-bridge for me"*. It follows
-[`AGENT-SETUP.md`](AGENT-SETUP.md), asks you for the token / webhook / your user id, starts the bridge and verifies it.
+[`AGENT-SETUP.md`](AGENT-SETUP.md), asks you for the token / webhook / your user id, and gets the bridge running on an
+always-on host (not on the agent's own computer, which sleeps) and verifies it.
 
 **By hand:**
 
@@ -37,7 +38,7 @@ No self-updater, no inbound ports, no telemetry.
 2. In Grok Bot create a **routine with a webhook trigger**; paste [`ROUTINE-PROMPT.md`](ROUTINE-PROMPT.md) as its prompt; copy the webhook URL and key.
 3. `cp .env.example .env`, fill in the four values, `chmod 600 .env`.
 4. `npm ci && npm run doctor` (checks token, intent, owner id, webhook; prints actionable errors, never secrets).
-5. Start it: `mkdir -p data && chown 1000:1000 data && docker compose up -d --build`, or `npm ci --omit=dev && node bot.js`
+5. Start it **on an always-on host, not on your agent's computer** (see [Running](#running)): `mkdir -p data && chown 1000:1000 data && docker compose up -d --build`, or `npm ci --omit=dev && node bot.js`
    (`scripts/run-forever.sh` restarts it on exit code 75).
 6. In Discord, DM your bot or run `/bridge status` (give it a minute after the first start to register the commands).
 
@@ -158,6 +159,13 @@ sees your messages, and you can revoke everything by resetting your own token.
 * **Dedupe**: delivered or deliberately dropped message ids are remembered, so nothing fires twice.
 
 ## Running
+
+> **Do not run the bridge on your agent's own computer.** A Grok Bot's computer goes to sleep when it is idle, and a sleeping
+> host drops the Discord gateway connection, so the bridge would miss messages and wake up late. (Catch-up recovers recent
+> history after a wake, but it cannot make a sleeping host act as an always-on listener.) Run the bridge on an **always-on host**
+> that you control: a home server, a spare machine, a VPS or a [DigitalOcean](docs/DIGITALOCEAN.md) Droplet. Only the
+> [REST helper](#rest-helper-for-the-agent) (`discord.sh`) belongs on the agent's computer, because it makes one-off calls and
+> does not need a long-lived connection.
 
 * **Docker** (recommended): `docker compose up -d --build`. Updating is your choice: `git pull && docker compose up -d --build` (the image build runs the tests).
 * **Node directly** (Node ≥ 20, 22 recommended): `npm ci --omit=dev && node bot.js`; wrap it with `scripts/run-forever.sh` or a systemd unit with `Restart=always`.

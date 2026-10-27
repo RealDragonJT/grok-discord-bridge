@@ -2,7 +2,7 @@
 
 Two situations bring an AI agent to this repo:
 
-1. **You were asked to install / set up the bridge for a human** → read and follow [`AGENT-SETUP.md`](AGENT-SETUP.md). Do not skip its secret-handling rules.
+1. **You were asked to install / set up the bridge for a human** → read and follow [`AGENT-SETUP.md`](AGENT-SETUP.md). Do not skip its secret-handling rules, and do not start the bridge on a computer that sleeps when idle (such as a Grok Bot's own computer): it must run on an always-on host.
 2. **You were asked to change the code** → read [`README.md`](README.md) first, then:
    * Run `npm ci && npm test && npm run check` before and after changes. Tests are offline (no token, no Discord).
    * Settings are runtime data in `data/settings.json` managed by `/bridge` commands (`lib/commands.js`); env holds only `DISCORD_BOT_TOKEN`, `WEBHOOK_URL`, `WEBHOOK_KEY`, `OWNER_ID` (+ optional `DATA_DIR`, `SETTINGS_B64`). Do not add more env switches for things a slash command can own.
