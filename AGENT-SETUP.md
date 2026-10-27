@@ -7,6 +7,10 @@ things listed in step 2. Never print, log, commit or echo a secret (token, webho
 
 Rules that apply throughout:
 
+* **Never run the bridge on your own computer if it sleeps when idle** (this is the case for a Grok Bot's computer). A sleeping
+  host drops the Discord gateway connection and the bridge stops listening. Run `bot.js` / `docker compose` only on an
+  **always-on host** the human controls (their server, a VPS, a DigitalOcean Droplet: step 7). You may use your own computer for
+  `npm run doctor`, tests and the REST helper `discord.sh`, but not for the long-running bridge.
 * **One instance per bot token.** If the human already runs a bot with this token somewhere, stop it first.
 * Do not register slash commands yourself; the bridge registers `/bridge` globally on its first start.
 * Do not "improve" `OWNER_ID`: it is the human's own Discord user id and nobody else's.
@@ -23,8 +27,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://discord.com/api/v10/gateway   
 ```
 
 * Prefer **Docker** (`docker compose`). If Docker is missing but Node ≥ 20 exists, use Node directly (step 4b).
-* If neither exists, ask the human where it should run (their server, a Droplet: step 7, …) before going on.
-* Clone/obtain this repo into a directory the human wants to keep (e.g. `~/grok-discord-bridge`) and `cd` into it.
+* **Decide where the bridge will run before anything else.** If you are running on a computer that sleeps when idle (a Grok Bot's computer does), do **not** start the bridge there. Ask the human which always-on host to use (their server, a VPS, a Droplet: step 7). If they have none yet, do steps 2 and 3 for them and hand over the finished `.env` and the exact start command for that host, or follow step 7 once they approve the cost.
+* If neither Docker nor Node exists on the chosen host, install them there or ask the human.
+* Clone/obtain this repo into a directory the human wants to keep on the always-on host (e.g. `~/grok-discord-bridge`) and `cd` into it. A scratch copy on your own computer is fine for `npm run doctor`, but do not start the bridge from it.
 * Run `npm ci` once (also needed for `npm run doctor`).
 
 ## 2. Ask the human for exactly these things
