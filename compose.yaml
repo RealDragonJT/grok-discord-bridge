@@ -14,7 +14,7 @@ services:
     cap_drop:
       - ALL
     # Time to flush pending webhook posts and save state on shutdown.
-    stop_grace_period: 15s
+    stop_grace_period: 30s
     logging:
       driver: json-file
       options:

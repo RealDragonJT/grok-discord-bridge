@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { mkTmp } = require('./helpers');
+const { mkTmp, modeIs600 } = require('./helpers');
 const S = require('../lib/settings');
 
 test('defaults: safe out of the box', () => {
@@ -21,13 +21,13 @@ test('load/save round trip: first load creates the file with mode 600; updates a
   const dir = mkTmp(); const f = path.join(dir, 'settings.json');
   const st = new S.SettingsStore(f);
   assert(fs.existsSync(f));
-  assert.strictEqual(fs.statSync(f).mode & 0o777, 0o600);
+  assert(modeIs600(f), 'file mode 600');
   st.update((d) => { d.cooldownSeconds = 42; d.approved.push({ id: '300000000000000001', label: 'friend' }); d.quietHours = { ...d.quietHours, enabled: true, tz: 'America/Chicago' }; });
   const st2 = new S.SettingsStore(f);
   assert.strictEqual(st2.get().cooldownSeconds, 42);
   assert.deepStrictEqual(st2.get().approved.map((u) => u.id), ['300000000000000001']);
   assert.strictEqual(st2.get().quietHours.tz, 'America/Chicago');
-  assert.strictEqual(fs.statSync(f).mode & 0o777, 0o600);
+  assert(modeIs600(f), 'file mode 600');
   assert.deepStrictEqual(fs.readdirSync(dir).filter((n) => n.endsWith('.tmp')), [], 'no temp files left behind');
 });
 

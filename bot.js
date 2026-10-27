@@ -49,6 +49,7 @@ const startedAt = Date.now();
 const gw = { connectStartedAt: 0, everReady: false, readyAt: 0, lastEventAt: 0, lastDisconnectAt: 0, disconnects: 0, reconnects: 0, resumes: 0, lastPresenceAt: 0 };
 const monitor = new HealthMonitor();
 let inflightPosts = 0;
+const inflightBatches = new Set();
 let exiting = false;
 
 // ---------- webhook ----------
@@ -57,9 +58,29 @@ const batcher = new Batcher({
   onFlush: (items) => {
     const payload = buildEvent(items);
     inflightPosts++;
-    postWebhook(payload, cfg, log).then((r) => state.recordWebhook(r)).catch((e) => log('post error', e)).finally(() => { inflightPosts--; });
+    inflightBatches.add(items);
+    postWebhook(payload, cfg, log)
+      .then((r) => { state.recordWebhook(r); if (r.ok) redeliveryDelayMs = REDELIVERY_MIN_MS; else markUndelivered(items, `webhook failed status=${r.status}`); })
+      .catch((e) => { log('post error', e); markUndelivered(items, 'post error'); })
+      .finally(() => { inflightBatches.delete(items); inflightPosts--; });
   },
 });
+
+// Failed deliveries are never silently lost: remember their ids (never text) and let a catch-up pass re-read them from Discord.
+const REDELIVERY_MIN_MS = 60 * 1000, REDELIVERY_MAX_MS = 30 * 60 * 1000;
+let redeliveryDelayMs = REDELIVERY_MIN_MS, redeliveryTimer = null;
+function markUndelivered(items, why) {
+  cstate.noteUndelivered(items.map((i) => ({ channelId: i.channel_id, id: i.message_id })));
+  log(`undelivered: ${items.length} message(s) kept for redelivery (${why})`);
+  scheduleRedelivery();
+}
+function scheduleRedelivery() {
+  if (redeliveryTimer || exiting || !cstate.hasUndelivered()) return;
+  const wait = redeliveryDelayMs;
+  redeliveryDelayMs = Math.min(redeliveryDelayMs * 2, REDELIVERY_MAX_MS);
+  redeliveryTimer = setTimeout(() => { redeliveryTimer = null; if (cstate.hasUndelivered()) { scheduleCatchup('redeliver'); scheduleRedelivery(); } }, wait);
+  if (redeliveryTimer.unref) redeliveryTimer.unref();
+}
 
 // Typing + 👀 for the owner's fresh direct messages. No text reply: the webhook-woken agent replies.
 function ackMessage(info, message) {
@@ -167,6 +188,17 @@ function statusReport() {
   };
 }
 
+// Wait for in-flight webhook posts; whatever is still unsent afterwards is recorded for redelivery on the next start.
+async function drainInflight(maxMs) {
+  const deadline = Date.now() + maxMs;
+  while (inflightPosts > 0 && Date.now() < deadline) await sleep(100);
+  if (inflightBatches.size) {
+    for (const items of inflightBatches) cstate.noteUndelivered(items.map((i) => ({ channelId: i.channel_id, id: i.message_id })));
+    log(`shutdown: ${inflightBatches.size} webhook batch(es) still unsent; saved for redelivery on next start`);
+  }
+  cstate.save(); state.flush();
+}
+
 // ---------- health check: exit 75 so the supervisor restarts us right away ----------
 async function exitUnhealthy(reason) {
   if (exiting) return;
@@ -174,8 +206,7 @@ async function exitUnhealthy(reason) {
   log(`HEALTH: gateway unhealthy, exiting with code ${EXIT_UNHEALTHY} so the supervisor restarts the bridge: ${reason}`);
   try { batcher.flushAll(); } catch (_) { /* ignore */ }
   cstate.save(); state.flush();
-  const deadline = Date.now() + 8000;
-  while (inflightPosts > 0 && Date.now() < deadline) await sleep(200);
+  await drainInflight(8000);
   process.exit(EXIT_UNHEALTHY);
 }
 function writeHealthFile(rep) {
@@ -253,9 +284,22 @@ async function buildCatchupSources(fresh, floorMs, now) {
       if (ch.type !== ChannelType.GuildText && ch.type !== ChannelType.GuildAnnouncement) continue;
       if (seen.has(ch.id)) continue;
       try { const perms = me && ch.permissionsFor(me); if (!perms || !perms.has('ViewChannel') || !perms.has('ReadMessageHistory')) continue; } catch (_) { continue; }
-      if (fresh && ch.lastMessageId && catchup.cmpId(ch.lastMessageId, catchup.maxId(afterId, cstate.lastIds[ch.id])) <= 0) continue;
+      if (fresh && ch.lastMessageId && catchup.cmpId(ch.lastMessageId, catchup.maxId(afterId, cstate.lastIds[ch.id])) <= 0 && !cstate.undelivered[ch.id]) continue;
       chans.push(ch);
     }
+  }
+  // 2b) active threads and forum posts (guild.channels.cache does not list them); archived threads are not covered
+  for (const g of c.guilds.cache.values()) {
+    try {
+      const me = g.members.me;
+      const { threads } = await g.channels.fetchActiveThreads();
+      for (const th of threads.values()) {
+        if (seen.has(th.id)) continue;
+        try { const perms = me && th.permissionsFor(me); if (!perms || !perms.has('ViewChannel') || !perms.has('ReadMessageHistory')) continue; } catch (_) { continue; }
+        if (fresh && th.lastMessageId && catchup.cmpId(th.lastMessageId, catchup.maxId(afterId, cstate.lastIds[th.id])) <= 0 && !cstate.undelivered[th.id]) continue;
+        chans.push(th);
+      }
+    } catch (e) { log(`catch-up: active threads for guild ${g.id} unavailable: ${e.code || e.name}`); }
   }
   chans.sort((x, y) => (y.lastMessageId ? (x.lastMessageId ? catchup.cmpId(y.lastMessageId, x.lastMessageId) : 1) : (x.lastMessageId ? -1 : 0)));
   for (const ch of chans) sources.push({ channelId: ch.id, kind: 'guild', fetchPage: ({ after, limit }) => ch.messages.fetch({ after, limit }).then((m) => Array.from(m.values())) });
@@ -385,7 +429,17 @@ async function main() {
 setInterval(healthTick, HEALTH.intervalMs);
 process.on('unhandledRejection', (e) => log('unhandledRejection', e));
 process.on('uncaughtException', (e) => log('uncaughtException', e));
-const shutdown = () => { exiting = true; log('shutting down'); batcher.flushAll(); cstate.save(); state.flush(); setTimeout(() => process.exit(0), 1500); };
+let shuttingDown = false;
+const SHUTDOWN_DRAIN_MS = 12000; // keep below stop_grace_period in compose.yaml (30s)
+const shutdown = async () => {
+  if (shuttingDown) return;
+  shuttingDown = true; exiting = true; log('shutting down');
+  try { batcher.flushAll(); } catch (_) { /* ignore */ }
+  cstate.save(); state.flush();
+  await drainInflight(SHUTDOWN_DRAIN_MS);
+  process.exit(0);
+};
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+scheduleRedelivery(); // deliveries that failed before the last stop
 main();

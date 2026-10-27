@@ -153,7 +153,8 @@ sees your messages, and you can revoke everything by resetting your own token.
 ## Reliability
 
 * **Health check**: every 30 s the bridge inspects the real shard state (not just the manager), heartbeat acks and clock jumps (a suspended host). Two bad checks in a row make it exit with code **75**; Docker's `restart: unless-stopped` (or `scripts/run-forever.sh`, systemd `Restart=always`) brings it straight back. `data/health.json` feeds the Docker `HEALTHCHECK`.
-* **Catch-up**: after (re)connects and clock jumps it reads recent history over REST (≤ 3 h, ≤ 50 × 3 pages per channel, starting from the last verified-alive time) for your DM and the server channels the bot can read, and feeds anything new through the **same policy pipeline** as live messages (flagged `missed`). A fresh install never replays old history.
+* **Catch-up**: after (re)connects and clock jumps it reads recent history over REST (≤ 3 h, ≤ 50 × 3 pages per channel, starting from the last verified-alive time) for your DM and the server channels the bot can read, and feeds anything new through the **same policy pipeline** as live messages (flagged `missed`). Active threads and forum posts are included (archived ones are not). A fresh install never replays old history.
+* **Failed deliveries are not lost**: if the webhook still fails after its retries, or the process stops before a post finishes, the message ids (never the text) are saved and the next catch-up pass re-reads those messages from Discord and delivers them (retried after 1 min, backing off to 30 min; anything older than 3 h is given up). Shutdown waits up to 12 s for in-flight posts (`stop_grace_period` is 30 s). Messages re-delivered this way go through the policy again, so cooldown and daily-cap counters can count them a second time.
 * **Dedupe**: delivered or deliberately dropped message ids are remembered, so nothing fires twice.
 
 ## Running
